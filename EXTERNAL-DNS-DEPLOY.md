@@ -64,3 +64,13 @@ JWT 已存在则不轮换；已激活管理员不重置密码。未激活 finish
 首版收信下载使用了 `redirect: 'error'`。Cloudflare Workers 只支持 `manual` 和 `follow`，因此会在发出请求前报错。修复版使用 `manual` 并拒绝非成功响应，仍然禁止自动跳转，也不会向邮件原文下载地址发送 API Key。
 
 已经上线的项目不会因为 main 更新而自动发版。如需修复，选择 Actions → **Repair existing external mail inbound**，输入已有客户域名及部署状态记录中的完整 40 位源码 SHA，经客户环境本人审批后运行。程序仅接受 `mail-worker/src/external/protocol.js` 这一处运行代码变动，并核对仓库、账号、客户、Worker、数据库、KV、加密密钥、通知接口与已激活数据库标识。该流程不创建资源、不执行初始化、不改密码、密钥、DNS 或服务商配置。上线后仍须进行真实收信与附件验收。
+
+## 增加 mail.客户域名 登录地址
+
+客户保留外部 DNS 时，自定义网页登录地址需要先通过 Cloudflare for SaaS 接入并验证 HTTPS 证书。普通 CNAME 到 workers.dev 不能代替这一步。使用你自己在 CF 托管的接入域名，并将路由限定到对应客户；不要用全站通配路由覆盖现有网站或邮箱。
+
+在 Actions 选择 **Add external mail website hostname**，输入已有邮箱域名、`mail.邮箱域名` 和部署状态记录中当前完整 40 位源码 SHA，再本人审批客户环境。该流程只增加该项目的网页域名支持，保留原 workers.dev 地址和 Resend 签名通知接口；收信通知仍只在原地址接收。数据库、邮件、账号、密码和加密密钥继续使用现有资源，不执行初始化。
+
+完成 SaaS 接入后，在客户 DNS 平台按实际返回值添加 `mail` CNAME 及必要的验证记录。原 MX、SPF、DKIM、网站 A/AAAA/CNAME 和 NS 保留。运行摘要中的 `website_runtime_ready_dns_tls_pending` 只表示程序适配完成，还必须验收新域名的证书、登录、附件、真实收发信。
+
+此流程当前仅支持精确的 `mail.邮箱域名`，不接受任意网址、通配符或其他客户域名。它是已有项目的受保护手动流程，不会在 push main 时自动给旧项目发版。

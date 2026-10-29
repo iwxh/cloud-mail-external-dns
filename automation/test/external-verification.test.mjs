@@ -6,6 +6,7 @@ import { join,dirname,basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { providerRecords,providerVerificationReady,waitForProviderVerification,runtimeSourceUnchanged,inspect,REPOSITORY,ALLOWED_ACCOUNT,names } from '../external-provision.mjs';
 import { repairSourceAllowed } from '../external-repair.mjs';
+import { websiteSourceAllowed } from '../external-website.mjs';
 
 const domain='example.com';
 const records=[
@@ -63,9 +64,18 @@ test('real git comparison allows tooling-only descendants but rejects runtime or
     const protocol=git(['rev-parse','HEAD']);
     assert.equal(repairSourceAllowed(base,protocol,root),true);
     assert.equal(repairSourceAllowed(protocol,base,root),false);
+    assert.equal(websiteSourceAllowed(base,protocol,root),false);
+    await mkdir(join(root,'mail-worker','src','oneclick'),{recursive:true});
+    await writeFile(join(root,'mail-worker','src','external-entry.js'),'website entry');
+    await writeFile(join(root,'mail-worker','src','external','hosts.js'),'website hosts');
+    await writeFile(join(root,'mail-worker','src','oneclick','setup.js'),'website setup');
+    git(['add','.']);git(['commit','-m','website']);const website=git(['rev-parse','HEAD']);
+    assert.equal(websiteSourceAllowed(protocol,website,root),true);
+    assert.equal(websiteSourceAllowed(website,protocol,root),false);
     await writeFile(join(root,'mail-worker','runtime.js'),'changed');git(['add','.']);git(['commit','-m','runtime']);
     assert.equal(runtimeSourceUnchanged(base,git(['rev-parse','HEAD']),root),false);
     assert.equal(repairSourceAllowed(base,git(['rev-parse','HEAD']),root),false);
+    assert.equal(websiteSourceAllowed(protocol,git(['rev-parse','HEAD']),root),false);
     assert.equal(runtimeSourceUnchanged(tooling,base,root),false);
     assert.equal(runtimeSourceUnchanged('invalid',tooling,root),false);
     await writeFile(join(root,'mail-worker','runtime.js'),'original');await writeFile(join(root,'automation','schema.mjs'),'changed');git(['add','.']);git(['commit','-m','schema']);

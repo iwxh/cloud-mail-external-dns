@@ -1,4 +1,5 @@
 import KvConst from '../const/kv-const.js';
+import { externalHostAllowed } from '../external/hosts.js';
 
 const headers = {
   'Cache-Control': 'no-store',
@@ -49,8 +50,8 @@ button{margin-top:24px;background:#126448;color:white;border:0;cursor:pointer}p{
 
 export async function setupRequest(request, env, meta, hashPassword) {
   const url = new URL(request.url);
-  const hostname = env.EXTERNAL_DNS_MODE === 'true' ? env.EXTERNAL_WEBSITE_HOST : `mail.${env.ONECLICK_DOMAIN}`;
-  if (url.protocol !== 'https:' || url.hostname !== hostname) return response('Not found', 404);
+  const allowed = env.EXTERNAL_DNS_MODE === 'true' ? externalHostAllowed(url.hostname,env) : url.hostname===`mail.${env.ONECLICK_DOMAIN}`;
+  if (url.protocol !== 'https:' || !allowed) return response('Not found', 404);
   if (url.pathname === '/_cloudmail/health') {
     return response(JSON.stringify({ deploymentId: env.ONECLICK_DEPLOYMENT_ID, schemaReady: !!meta?.schema_ready, activated: !!meta?.activated }),
       meta?.schema_ready ? 200 : 503, 'application/json');

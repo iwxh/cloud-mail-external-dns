@@ -1,0 +1,84 @@
+name: Add external mail website hostname
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Existing mail domain, e.g. kinghh.cn'
+        required: true
+        type: string
+      website_hostname:
+        description: 'Exactly mail.customer-domain, e.g. mail.kinghh.cn'
+        required: true
+        type: string
+      expected_deployed_commit:
+        description: 'Exact 40-character source SHA recorded for the existing customer'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: external-mail-${{ inputs.domain }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      domain: ${{ steps.input.outputs.domain }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - id: input
+        env:
+          MAIL_DOMAIN: ${{ inputs.domain }}
+          WEBSITE_HOSTNAME: ${{ inputs.website_hostname }}
+          EXPECTED_DEPLOYED_COMMIT: ${{ inputs.expected_deployed_commit }}
+        run: |
+          node --input-type=module -e "import{domainName,REPOSITORY}from'./automation/external-provision.mjs';import{websiteHostname,websiteSourceAllowed}from'./automation/external-website.mjs';import{appendFileSync}from'node:fs';if(process.env.GITHUB_REPOSITORY!==REPOSITORY||process.env.GITHUB_REF!=='refs/heads/main'||!websiteSourceAllowed(process.env.EXPECTED_DEPLOYED_COMMIT,process.env.GITHUB_SHA,process.cwd()))throw Error('Invalid repository or migration source');websiteHostname(process.env.MAIL_DOMAIN,process.env.WEBSITE_HOSTNAME);appendFileSync(process.env.GITHUB_OUTPUT,'domain='+domainName(process.env.MAIL_DOMAIN)+'\n')"
+  website:
+    needs: validate
+    environment: external-${{ needs.validate.outputs.domain }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      MAIL_DOMAIN: ${{ needs.validate.outputs.domain }}
+      CUSTOMER_DOMAIN: ${{ vars.CUSTOMER_DOMAIN }}
+      WEBSITE_HOSTNAME: ${{ inputs.website_hostname }}
+      EXPECTED_DEPLOYED_COMMIT: ${{ inputs.expected_deployed_commit }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Read-only existing customer checks
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_OWNER_EMAIL: ${{ secrets.MAIL_OWNER_EMAIL }}
+        run: node automation/external-website.mjs --plan
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.10.0
+      - name: Test and build hostname support
+        run: |
+          pnpm --dir mail-worker install --frozen-lockfile
+          pnpm --dir mail-vue install --frozen-lockfile
+          node --experimental-vm-modules --test automation/test/external-*.test.mjs
+          pnpm --dir mail-vue run build
+          node automation/external-check-bundle.mjs
+      - name: Add website hostname while preserving the original mail callback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_OWNER_EMAIL: ${{ secrets.MAIL_OWNER_EMAIL }}
+        run: node automation/external-website.mjs --prepare

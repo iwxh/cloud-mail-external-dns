@@ -37,10 +37,12 @@ export function assertIdentity(state,accountId,domain,commit) {
 }
 
 export function workerConfig(state,workerDir) {
+  if(state.websiteHost && state.websiteHost!==`mail.${state.domain}`) throw Error('Custom website hostname must be mail.customer-domain.');
   return {
     name:state.worker,main:join(workerDir,'src/external-entry.js'),compatibility_date:'2025-06-04',keep_vars:true,workers_dev:true,
     observability:{ enabled:true },vars:{ admin:`admin@${state.domain}`,domain:[state.domain],project_link:false,
-      EXTERNAL_DNS_MODE:'true',EXTERNAL_WEBSITE_HOST:state.hostname,ONECLICK_DOMAIN:state.domain,ONECLICK_DEPLOYMENT_ID:state.deploymentId },
+      EXTERNAL_DNS_MODE:'true',EXTERNAL_WEBSITE_HOST:state.hostname,ONECLICK_DOMAIN:state.domain,ONECLICK_DEPLOYMENT_ID:state.deploymentId,
+      ...(state.websiteHost ? {EXTERNAL_CUSTOM_WEBSITE_HOST:state.websiteHost} : {}) },
     d1_databases:[{ binding:'db',database_name:state.databaseName,database_id:state.databaseId }],
     kv_namespaces:[{ binding:'kv',id:state.kvId }],
     ai:{ binding:'ai' },assets:{ binding:'assets',directory:join(workerDir,'dist'),not_found_handling:'single-page-application',run_worker_first:true },

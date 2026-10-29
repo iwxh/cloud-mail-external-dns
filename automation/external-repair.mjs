@@ -18,7 +18,10 @@ export function repairSourceAllowed(previous,current,root) {
 export function assertExistingBindings(settings,state) {
   const bindings=settings?.bindings||[];
   const allowed=new Set(['admin','domain','project_link','EXTERNAL_DNS_MODE','EXTERNAL_WEBSITE_HOST','ONECLICK_DOMAIN',
-    'ONECLICK_DEPLOYMENT_ID','db','kv','ai','assets','jwt_secret','EXTERNAL_RESEND_API_KEY','EXTERNAL_WEBHOOK_SECRET']);
+    'ONECLICK_DEPLOYMENT_ID','db','kv','ai','assets','jwt_secret','EXTERNAL_RESEND_API_KEY','EXTERNAL_WEBHOOK_SECRET','EXTERNAL_CUSTOM_WEBSITE_HOST']);
+  const custom=bindings.find(item=>item.name==='EXTERNAL_CUSTOM_WEBSITE_HOST');
+  if((state.websiteHost && (state.websiteHost!==`mail.${state.domain}` || custom?.type!=='plain_text' || custom.text!==state.websiteHost)) ||
+    (!state.websiteHost && custom)) throw Error('Custom website binding does not match customer state.');
   if(bindings.some(item=>!allowed.has(item.name)) || new Set(bindings.map(item=>item.name)).size!==bindings.length ||
     bindings.filter(item=>item.type==='d1').length!==1 || bindings.filter(item=>item.type==='kv_namespace').length!==1 ||
     !bindings.some(item=>item.name==='db' && item.type==='d1' && item.id===state.databaseId) ||
