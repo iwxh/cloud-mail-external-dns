@@ -1,0 +1,4 @@
+# Legacy test config cannot deploy shared resources. Use npm run test:template.
+name = "cloud-mail-template-not-configured"
+main = "TEMPLATE_REQUIRES_NPM_RUN_DEPLOY.js"
+compatibility_date = "2025-06-04"

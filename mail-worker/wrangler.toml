@@ -1,0 +1,6 @@
+# Reusable template: use npm run deploy and the variables in DEPLOY-TEMPLATE.md.
+# The absent entry point deliberately prevents direct deployment of this stub.
+name = "cloud-mail-template-not-configured"
+main = "TEMPLATE_REQUIRES_NPM_RUN_DEPLOY.js"
+compatibility_date = "2025-06-04"
+keep_vars = true

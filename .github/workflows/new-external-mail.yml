@@ -1,0 +1,86 @@
+name: New external DNS mail customer
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Customer mail domain only, e.g. example.com. No nameserver change.'
+        required: true
+        type: string
+      operation:
+        description: 'prepare = isolated project and DNS list; finish = verify customer DNS and send activation.'
+        type: choice
+        options: [plan,prepare,finish]
+        default: plan
+permissions:
+  contents: read
+concurrency:
+  group: external-mail-${{ inputs.domain }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      domain: ${{ steps.input.outputs.domain }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - id: input
+        env:
+          MAIL_DOMAIN: ${{ inputs.domain }}
+        run: |
+          node --input-type=module -e "import {domainName,REPOSITORY} from './automation/external-provision.mjs'; import{appendFileSync}from'node:fs';if(process.env.GITHUB_REPOSITORY!==REPOSITORY||process.env.GITHUB_REF!=='refs/heads/main')throw Error('Use this independent repository main branch');appendFileSync(process.env.GITHUB_OUTPUT,'domain='+domainName(process.env.MAIL_DOMAIN)+'\n')"
+  customer:
+    needs: validate
+    environment: external-${{ needs.validate.outputs.domain }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      MAIL_DOMAIN: ${{ needs.validate.outputs.domain }}
+      CUSTOMER_DOMAIN: ${{ vars.CUSTOMER_DOMAIN }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Read-only conflict and ownership checks
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_OWNER_EMAIL: ${{ secrets.MAIL_OWNER_EMAIL }}
+        run: node --experimental-vm-modules automation/external-provision.mjs --plan
+      - uses: pnpm/action-setup@v4
+        if: inputs.operation != 'plan'
+        with:
+          version: 9.10.0
+      - name: Install, test and build
+        if: inputs.operation != 'plan'
+        run: |
+          pnpm --dir mail-worker install --frozen-lockfile
+          pnpm --dir mail-vue install --frozen-lockfile
+          node --experimental-vm-modules --test automation/test/external-*.test.mjs
+          pnpm --dir mail-vue run build
+          node automation/external-check-bundle.mjs
+      - name: Create isolated resources and return DNS list
+        if: inputs.operation == 'prepare'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_OWNER_EMAIL: ${{ secrets.MAIL_OWNER_EMAIL }}
+        run: node --experimental-vm-modules automation/external-provision.mjs --prepare
+      - name: Verify DNS and request administrator activation
+        if: inputs.operation == 'finish'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_OWNER_EMAIL: ${{ secrets.MAIL_OWNER_EMAIL }}
+        run: node --experimental-vm-modules automation/external-provision.mjs --finish
