@@ -54,7 +54,9 @@ export async function getRawEmail(event, apiKey, fetcher = fetch) {
   const id = event?.data?.email_id;
   if (!/^[a-f0-9-]{36}$/i.test(id || '') || !apiKey) throw new Error('Invalid email reference');
   const response = await fetcher(`https://api.resend.com/emails/receiving/${id}`, {
-    headers: { Authorization: `Bearer ${apiKey}` }, redirect: 'error', signal: AbortSignal.timeout(30000)
+    // Workers supports manual/follow only. Reject 3xx via response.ok below
+    // instead of using redirect:'error', which throws before the request is sent.
+    headers: { Authorization: `Bearer ${apiKey}` }, redirect: 'manual', signal: AbortSignal.timeout(30000)
   });
   if (!response.ok) throw new Error('Receiving API unavailable');
   const detail = await response.json();
@@ -63,7 +65,7 @@ export async function getRawEmail(event, apiKey, fetcher = fetch) {
   if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid raw email URL');
   // The URL comes only from the authenticated provider API, never the webhook payload.
   // Do not forward the API key to the signed download endpoint or follow redirects.
-  const raw = await fetcher(url.href, { redirect: 'error', signal: AbortSignal.timeout(30000) });
+  const raw = await fetcher(url.href, { redirect: 'manual', signal: AbortSignal.timeout(30000) });
   if (!raw.ok) throw new Error('Raw download unavailable');
   return { detail, raw: await readLimited(raw.body, MAX_RAW_BYTES) };
 }

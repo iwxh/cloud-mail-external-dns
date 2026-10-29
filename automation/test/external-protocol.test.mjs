@@ -38,8 +38,22 @@ test('raw URL comes from authenticated provider API and API key is never sent to
     return calls.length === 1 ? Response.json({ id,raw:{ download_url:'https://download.resend.com/message' } }) : new Response('From: sender@example.net\r\n\r\nhello');
   });
   assert.equal(calls[0].url,`https://api.resend.com/emails/receiving/${id}`);
+  assert.equal(calls[0].options.redirect,'manual');assert.equal(calls[1].options.redirect,'manual');
   assert.equal(calls[1].url,'https://download.resend.com/message');assert.equal(calls[1].options.headers,undefined);
   assert.ok(result.raw.length>10);
+});
+
+test('API and raw download redirects fail closed without following Location',async () => {
+  const id='11111111-1111-4111-8111-111111111111';
+  for(const failAt of [1,2]) {
+    let calls=0;
+    await assert.rejects(getRawEmail({data:{email_id:id}},'re_test',async(url,options)=>{
+      calls++;assert.equal(options.redirect,'manual');
+      return calls===failAt ? new Response('',{status:302,headers:{Location:'https://attacker.invalid/'}})
+        : Response.json({id,raw:{download_url:'https://download.resend.com/message'}});
+    }),/unavailable/);
+    assert.equal(calls,failAt);
+  }
 });
 test('provider failures and insecure raw URLs do not acknowledge mail',async () => {
   const event={ data:{ email_id:'11111111-1111-4111-8111-111111111111' } };

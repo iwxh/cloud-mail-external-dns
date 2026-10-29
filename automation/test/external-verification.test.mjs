@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join,dirname,basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { providerRecords,providerVerificationReady,waitForProviderVerification,runtimeSourceUnchanged,inspect,REPOSITORY,ALLOWED_ACCOUNT,names } from '../external-provision.mjs';
+import { repairSourceAllowed } from '../external-repair.mjs';
 
 const domain='example.com';
 const records=[
@@ -50,13 +51,21 @@ test('real git comparison allows tooling-only descendants but rejects runtime or
   try {
     git(['init']);git(['config','user.name','Test Fixture']);git(['config','user.email','fixture@example.test']);git(['config','commit.gpgsign','false']);
     await mkdir(join(root,'mail-worker'));await mkdir(join(root,'mail-vue'));await mkdir(join(root,'automation'));
+    await mkdir(join(root,'mail-worker','src','external'),{recursive:true});
+    await writeFile(join(root,'mail-worker','src','external','protocol.js'),'original');
     await writeFile(join(root,'mail-worker','runtime.js'),'original');await writeFile(join(root,'mail-vue','app.js'),'original');
     await writeFile(join(root,'automation','schema.mjs'),'original');await writeFile(join(root,'automation','external-provision.mjs'),'original');
     git(['add','.']);git(['commit','-m','base']);const base=git(['rev-parse','HEAD']);
     await writeFile(join(root,'automation','external-provision.mjs'),'tooling fix');git(['add','.']);git(['commit','-m','tooling']);const tooling=git(['rev-parse','HEAD']);
     assert.equal(runtimeSourceUnchanged(base,tooling,root),true);
+    assert.equal(repairSourceAllowed(base,tooling,root),false);
+    await writeFile(join(root,'mail-worker','src','external','protocol.js'),'manual redirect fix');git(['add','.']);git(['commit','-m','protocol']);
+    const protocol=git(['rev-parse','HEAD']);
+    assert.equal(repairSourceAllowed(base,protocol,root),true);
+    assert.equal(repairSourceAllowed(protocol,base,root),false);
     await writeFile(join(root,'mail-worker','runtime.js'),'changed');git(['add','.']);git(['commit','-m','runtime']);
     assert.equal(runtimeSourceUnchanged(base,git(['rev-parse','HEAD']),root),false);
+    assert.equal(repairSourceAllowed(base,git(['rev-parse','HEAD']),root),false);
     assert.equal(runtimeSourceUnchanged(tooling,base,root),false);
     assert.equal(runtimeSourceUnchanged('invalid',tooling,root),false);
     await writeFile(join(root,'mail-worker','runtime.js'),'original');await writeFile(join(root,'automation','schema.mjs'),'changed');git(['add','.']);git(['commit','-m','schema']);
