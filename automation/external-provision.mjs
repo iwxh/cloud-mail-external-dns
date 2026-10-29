@@ -5,6 +5,7 @@ import { writeFile,rm,appendFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { Cloudflare } from './cloudflare.mjs';
 import { verifyPublicDNS } from './public-dns.mjs';
+import { txtValue } from './dns-content.mjs';
 
 export const REPOSITORY = 'iwxh/cloud-mail-external-dns';
 export const ALLOWED_ACCOUNT = '9ff805928769c3c771d772113fba0c45';
@@ -70,6 +71,40 @@ export function providerRecords(domain,records) {
   });
 }
 
+export function providerVerificationReady(state,info) {
+  if (info.name !== state.domain || !['verified','partially_verified'].includes(info.status) ||
+      info.capabilities?.sending !== 'enabled' || info.capabilities?.receiving !== 'enabled' || !state.dns.length) return false;
+  const key = record => JSON.stringify([record.type,record.name.toLowerCase().replace(/\.$/,''),
+    record.type === 'TXT' ? txtValue(record.content) : record.content.toLowerCase().replace(/\.$/,''),record.priority ?? null]);
+  const verified = new Set((info.records || []).filter(record => record.status === 'verified')
+    .flatMap(record => providerRecords(state.domain,[record])).map(key));
+  // Legacy sending and receiving can be ready while the optional Forge CNAME is still pending.
+  return state.dns.every(record => verified.has(key(record)));
+}
+
+export async function waitForProviderVerification(resend,state,{
+  attempts=120,wait=() => new Promise(resolve => setTimeout(resolve,10000)),log=console.log
+}={}) {
+  const path=`/domains/${state.resendDomainId}`;
+  let info=await resend.request('GET',path);
+  if (providerVerificationReady(state,info)) return info;
+  await resend.request('POST',`${path}/verify`);
+  for (let attempt=0;attempt<attempts;attempt++) {
+    if (attempt) await wait();
+    info=await resend.request('GET',path);
+    if (providerVerificationReady(state,info)) return info;
+    if (attempt % 6 === 0) log('Public DNS is ready; waiting for Resend to verify the required sending and receiving records.');
+  }
+  throw new Error('Required Resend records are still awaiting asynchronous verification. The existing website and data are preserved; retry finish later.');
+}
+
+export function runtimeSourceUnchanged(previous,current,root) {
+  if (![previous,current].every(value => /^[a-f0-9]{40}$/.test(value || ''))) return false;
+  const git=args => spawnSync('git',args,{ cwd:root,stdio:'ignore',shell:false });
+  if (git(['merge-base','--is-ancestor',previous,current]).status !== 0) return false;
+  return git(['diff','--quiet',previous,current,'--','mail-worker','mail-vue','automation/schema.mjs']).status === 0;
+}
+
 export async function publicMX(domain,fetcher = fetch) {
   const result=[];
   for (const base of ['https://cloudflare-dns.com/dns-query','https://dns.google/resolve']) {
@@ -83,7 +118,8 @@ export async function publicMX(domain,fetcher = fetch) {
   return result;
 }
 
-export async function inspect({ cf,resend,accountId,domain,commit,customerDomain,repository,ownerEmail,fetcher=fetch }) {
+export async function inspect({ cf,resend,accountId,domain,commit,customerDomain,repository,ownerEmail,fetcher=fetch,
+  mode='plan',sourceCompatible=async () => false }) {
   domainName(domain);
   if (repository !== REPOSITORY || customerDomain !== domain || accountId !== ALLOWED_ACCOUNT ||
       !/^[a-f0-9]{40}$/.test(commit || '') || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(ownerEmail || '')) throw new Error('Repository, customer environment, account, owner email, or source is not configured correctly.');
@@ -93,7 +129,14 @@ export async function inspect({ cf,resend,accountId,domain,commit,customerDomain
   if (matches.length > 1) throw new Error('Duplicate customer KV; manual review required.');
   const state=matches.length ? await cf.value(accountId,matches[0].id,STATE_KEY) : null;
   if (matches.length && !state) throw new Error('Existing KV is not owned by this customer deployment.');
-  if (state) { assertIdentity(state,accountId,domain,commit); if (state.kvId !== matches[0].id) throw new Error('KV binding mismatch'); }
+  if (state) {
+    let identityCommit=commit;
+    // A tooling-only fix may finish an already uploaded customer. Runtime changes still require a separate migration.
+    if (state.commit !== commit && ['plan','finish'].includes(mode) && state.uploaded === true && state.databaseId &&
+        state.resendDomainId && state.webhookId && state.apiKeyFingerprint && await sourceCompatible(state.commit,commit)) identityCommit=state.commit;
+    assertIdentity(state,accountId,domain,identityCommit);
+    if (state.kvId !== matches[0].id) throw new Error('KV binding mismatch');
+  }
   const settings=await cf.get(`${base}/workers/scripts/${named.worker}/settings`,true);
   if (settings && (!state || !settings.bindings?.some(item => item.name === 'ONECLICK_DEPLOYMENT_ID' && item.text === state.deploymentId) ||
       !settings.bindings.some(item => item.name === 'db' && item.id === state.databaseId) ||
@@ -196,9 +239,7 @@ export async function provision(options) {
   const health=await options.probe(`https://${state.hostname}/_cloudmail/health`,state.deploymentId);
   if (mode === 'finish') {
     await verifyDNS(state.dns);
-    await resend.request('POST',`/domains/${state.resendDomainId}/verify`);
-    const verified=await resend.request('GET',`/domains/${state.resendDomainId}`);
-    if (verified.status !== 'verified' || (verified.records || []).some(item => ['MX','TXT'].includes(item.type) && item.status !== 'verified')) throw new Error('DNS is published but provider verification is pending. Retry finish later.');
+    await waitForProviderVerification(resend,state);
     if (!meta.activated) {
       const code=random();console.log(`::add-mask::${code}`);
       await cf.query(accountId,state.databaseId,'UPDATE _cloudmail_deployment SET activation_hash=?,activation_expires=? WHERE id=1 AND activated=0',[hash(code),Date.now()+86400000]);
@@ -234,6 +275,7 @@ async function cli() {
     const result=await provision({ cf,resend,domain:process.env.MAIL_DOMAIN,customerDomain:process.env.CUSTOMER_DOMAIN,
       accountId:process.env.CLOUDFLARE_ACCOUNT_ID,repository:process.env.GITHUB_REPOSITORY,commit:process.env.GITHUB_SHA,
       ownerEmail:process.env.MAIL_OWNER_EMAIL,workerDir,mode,probe,
+      sourceCompatible:(previous,current) => runtimeSourceUnchanged(previous,current,fileURLToPath(new URL('../',import.meta.url))),
       schema:mode === 'plan' ? '' : await (await import('./schema.mjs')).freshSchema(new URL('../mail-worker/',import.meta.url)),
       deployWorker:async config => {
         await writeFile(configPath,JSON.stringify(config,null,2),{ mode:0o600 });
