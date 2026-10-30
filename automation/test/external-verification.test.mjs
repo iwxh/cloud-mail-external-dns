@@ -71,7 +71,10 @@ test('real git comparison allows tooling-only descendants but rejects runtime or
     await writeFile(join(root,'mail-worker','src','oneclick','setup.js'),'website setup');
     git(['add','.']);git(['commit','-m','website']);const website=git(['rev-parse','HEAD']);
     assert.equal(websiteSourceAllowed(protocol,website,root),true);
+    assert.equal(websiteSourceAllowed(website,website,root),true);
     assert.equal(websiteSourceAllowed(website,protocol,root),false);
+    await writeFile(join(root,'automation','external-provision.mjs'),'later tooling');git(['add','.']);git(['commit','-m','later tooling']);
+    assert.equal(websiteSourceAllowed(website,git(['rev-parse','HEAD']),root),true);
     await writeFile(join(root,'mail-worker','runtime.js'),'changed');git(['add','.']);git(['commit','-m','runtime']);
     assert.equal(runtimeSourceUnchanged(base,git(['rev-parse','HEAD']),root),false);
     assert.equal(repairSourceAllowed(base,git(['rev-parse','HEAD']),root),false);

@@ -20,7 +20,9 @@ export function websiteSourceAllowed(previous,current,root) {
   const result=git(['diff','--name-only',previous,current,'--','mail-worker','mail-vue','automation/schema.mjs']);
   const files=result.stdout.trim().split('\n').filter(Boolean);
   const allowed=new Set(['mail-worker/src/external-entry.js','mail-worker/src/external/hosts.js','mail-worker/src/oneclick/setup.js']);
-  return result.status===0 && files.length===allowed.size && files.every(file=>allowed.has(file));
+  // Fresh customers may already run hostname-capable code. A config-only add
+  // (or retry) must work at the same SHA or a tooling-only descendant as well.
+  return result.status===0 && (files.length===0 || files.length===allowed.size) && files.every(file=>allowed.has(file));
 }
 
 export async function addWebsite(options) {
