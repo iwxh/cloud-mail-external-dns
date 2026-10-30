@@ -77,6 +77,67 @@
 | `RESEND_API_KEY` | 本客户配置的 Resend 完全访问密钥（Full access） |
 | `MAIL_OWNER_EMAIL` | 你已经能收信的外部邮箱，例如现有 QQ / Gmail；用于接收激活通知 |
 
+### 这四项从哪里获取
+
+#### ① CLOUDFLARE_ACCOUNT_ID：复制 CF 账号标识
+
+1. 登录 [Cloudflare 控制台](https://dash.cloudflare.com/)，选择实际部署邮箱的那个账号。
+2. 按 `Ctrl + K` 打开搜索，输入 `Copy account ID`，选择“复制账户 ID”。
+3. 也可以打开 **Workers & Pages → Account Details（账号详情）→ Account ID**，点击复制。
+4. 把复制的账号 ID 填到 GitHub 环境的 `CLOUDFLARE_ACCOUNT_ID`。
+
+注意要复制 **Account ID（账号 ID）**，不是 **Zone ID（区域 ID）**。同一 CF 账号下的客户可以复用这个值。
+
+依据：[CF 官方账号 ID 获取说明](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/)。
+
+#### ② CLOUDFLARE_API_TOKEN：创建或使用现有部署令牌
+
+1. 打开 [CF 个人 API 令牌页面](https://dash.cloudflare.com/profile/api-tokens)。
+2. 点击 **Create Token（创建令牌）→ Create Custom Token（创建自定义令牌）**。
+3. 名称可填 `cloud-mail-external-dns-deploy`；选择实际使用的 **指定 CF 账号**作为账号资源范围。
+4. 当前部署器已验证使用的账号权限如下；它需要创建和管理新资源，不能只授权某一个已经存在的 Worker。
+
+| 权限类别 | 权限名称 | 级别 |
+|---|---|---|
+| Account（账号） | Workers Scripts | Edit（编辑） |
+| Account（账号） | D1 | Edit（编辑） |
+| Account（账号） | Workers KV Storage | Edit（编辑） |
+| Account（账号） | Workers AI | Edit（编辑） |
+
+5. 设置适当有效期，核对权限摘要后，由你本人创建令牌。
+6. 复制本次生成的**完整 Token 值**，保存到安全的密钥管理处，再填入 GitHub 环境的 `CLOUDFLARE_API_TOKEN`。不要复制令牌的名称或令牌 ID。
+
+当前外部 DNS 部署器不需要 DNS 编辑、CF Email Routing 或 CF 原生发信权限。不要使用 Global API Key（全局 API 密钥）。若面板使用新版 Worker 资源角色，创建新 Worker 需要产品级 Admin 权限，单个已有 Worker 的 Editor 不能代替新建权限。
+
+同一个仓库、同一个 CF 账号的后续客户，可以使用仍有效且权限匹配的专用部署令牌；无需每客户都重新生成。CF 只在创建时展示令牌原值；若你未保留原值，不能从旧令牌列表重新查看。新建令牌不要同时删除旧项目仍在使用的令牌。
+
+依据：[CF 创建令牌](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)、[账号权限列表](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)、[新版 Worker 角色说明](https://developers.cloudflare.com/workers/authorization/workers/)。
+
+#### ③ RESEND_API_KEY：在 Resend 创建本客户密钥
+
+1. 打开 [Resend API Keys](https://resend.com/api-keys)，登录正确的团队。
+2. 点击 **Create API Key（创建 API 密钥）**。名称例如 `kinghh-cn-external-dns`。
+3. 权限选择 **Full access（完全访问）**。当前程序还要管理域名、通知接口和读取来信，**仅发信 Sending access 不够**。
+4. 创建后复制本次显示的完整 Key，通常以 `re_` 开头，填入 GitHub 环境的 `RESEND_API_KEY`。
+
+复制的是 **Key 值**，不是名称、Key ID、Domain ID 或 Webhook Signing Secret。创建后不能重新查看原值；如果未保存，可以新建一把，再核对使用范围，不要直接删除旧项目正在使用的 Key。
+
+建议每客户单独命名和配置，便于追踪。但 Full access 仍有该 Resend 团队的管理及邮件读取权限，并不因名称包含 kinghh.cn 就变成域名级隔离。已部署客户更换 Key 要按凭据迁移处理，不能只替换 GitHub Secret 后盲目重跑。
+
+依据：[Resend 管理 API Key](https://resend.com/docs/dashboard/api-keys/introduction)、[权限说明](https://resend.com/docs/api-reference/api-keys/create-api-key)。
+
+#### ④ MAIL_OWNER_EMAIL：填写你自己的现有收件邮箱
+
+这不是需要申请的密钥。直接填你本人或客户已经能正常收信的完整 QQ / Gmail 等外部邮箱，用来接收管理员激活通知。
+
+只填邮箱地址，不填邮箱密码、QQ 授权码或 SMTP 密码。不要把尚未开通的新项目管理员邮箱作为唯一激活通知地址；同一通知邮箱可以用于多个客户。
+
+#### 最后填到 GitHub 哪里
+
+本仓库 **Settings（设置）→ Environments（环境）→ external-kinghh.cn → Environment secrets（环境密钥）→ Add environment secret（新增）**。Name 填上表准确名称，Value 填对应值，逐项保存。
+
+`kinghh.cn` 已经配置并上线，现有环境保留原值即可。新客户新建自己的 `external-客户域名` 环境；不要把这些值加到公开代码、Variables 或工作流输入框。保存后的 Secret 不显示原值，部署前只核对名称是否齐全。
+
 不要把尚未激活的 `admin@kinghh.cn` 当作唯一激活通知地址。密码、令牌和激活码由你本人粘贴到平台，**不要提交到仓库、聊天、截图或工作流输入框**。
 
 CF 令牌需要同一账号的 **Workers Scripts、D1、KV、Workers AI 编辑权限**；当前外部 DNS 模式不需要 DNS 编辑、CF 邮件路由或 CF 原生发信权限。令牌只供工作流使用，不进入客户 Worker。
