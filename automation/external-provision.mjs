@@ -287,7 +287,8 @@ async function cli() {
       }
     });
     const records=result.dns.map(item => `| ${item.type} | ${item.name} | ${item.content} | ${item.priority ?? ''} |`).join('\n');
-    const summary=`## External DNS customer deployment\n\nDomain: ${result.domain}\n\nWebsite: https://${result.hostname}\n\nAdmin: admin@${result.domain}\n\nStatus: ${result.status}\n\nNo DNS, NS, Cloudflare Email Routing, or existing project was changed.\n\n| Type | Name | Value | Priority |\n|---|---|---|---|\n${records}\n\nPublish these records at the customer's current DNS provider. Preserve existing SPF/DMARC policies. If there is no DMARC record, add a reviewed monitoring policy first. Real mail delivery tests remain pending.\n`;
+    const statusText={read_only_plan:'只读检查完成，未创建资源',waiting_for_customer_dns:'程序已部署，等待客户填写 DNS',activation_email_accepted:'激活通知已提交，请检查通知邮箱',already_active:'管理员已激活，可以直接登录'};
+    const summary=`## 客户邮箱部署结果（外部 DNS）\n\n邮箱域名：${result.domain}\n\n系统地址：https://${result.hostname}\n\n管理员：admin@${result.domain}\n\n当前状态：${statusText[result.status] || result.status}（${result.status}）\n\n本次运行源码 SHA：${process.env.GITHUB_SHA}\n\nWorker 程序：${result.worker || '只读检查阶段，尚未创建'}\n\n本流程未修改 DNS、NS、CF 邮件路由或已有客户项目。\n\n### 交给客户填写的 DNS 清单\n\n| 类型 | 完整名称 | 记录值 | 优先级 |\n|---|---|---|---|\n${records}\n\n请在客户现有 DNS 平台填写上述记录；主机记录是否自动补域名，需要核对。保留原 SPF/DMARC 策略；没有 DMARC 时先添加经审阅的监控策略。prepare 后填写 DNS，再在兼容源码版本运行 finish。邮箱是否可交付仍需真实收信、附件和发信验收。\n`;
     if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,summary);
     await writeFile(join(workerDir,'external-dns-records.json'),JSON.stringify(result,null,2));
     console.log(JSON.stringify({ domain:result.domain,status:result.status,website:`https://${result.hostname}` }));

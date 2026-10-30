@@ -5,9 +5,17 @@
 本仓库与原仓库没有自动同步、部署或资源共享关系。共用一个 Cloudflare 账号，每个客户有独立 Worker、D1、KV、JWT 和运行时密钥。
 网站在 Cloudflare，邮件通过 Resend 收发。部署程序只生成客户需要填写的解析清单，**不修改任何域名的 DNS、NS、CF Email Routing 或旧 Worker**。
 
+## 中文图解教程
+
+**[打开中文图解部署教程：使用 kinghh.cn 演示](DEPLOY-GUIDE-ZH.md)**
+
+包含逐步界面示意、中文按钮对照、填写范例、DNS 清单、管理员激活与 mail.kinghh.cn 接入。kinghh.cn 已上线，仅用于演示，不要重复新建或重新初始化。下一客户需把示例域名统一替换为其实际域名。
+
+![中文部署流程总览](docs/images/zh/step-01.svg)
+
 ## 使用前
 
-- 当前为新增功能的开发验收版；离线测试和打包通过不等于真实收发验收通过。首个测试域名：`kinghh.cn`。
+- 首个 `kinghh.cn` 项目已通过自定义网站域名、管理员登录、外部收信、附件及网站发信验收。其他客户仍需逐一验收，不能仅以离线测试和打包通过作为开通成功。
 - 默认使用系统分配的 `workers.dev` 登录地址，邮箱后缀仍为客户域名。
 - 客户要求 `mail.客户域名` 登录时，需要额外部署 Cloudflare for SaaS 自定义主机名与证书路由。此版本不会把任意 CNAME 当成已经完成域名绑定。
 - Resend 的域名数、Webhook 数和收发邮件额度受套餐限制。一个客户一个 Webhook。不会自动购买套餐或删除旧域名腾额度。
@@ -18,9 +26,9 @@
 
 ## 一次开发，多次部署
 
-1. 为客户准备 GitHub Environment：`external-example.com`，只允许 main，开启本人审批、禁止管理员绕过。
-2. 添加变量 `CUSTOMER_DOMAIN=example.com`，以及该环境的四个 Secrets。
-3. Actions → **New external DNS mail customer**，分支 main，域名 example.com，先选 plan。
+1. 为客户准备 GitHub Environment：`external-kinghh.cn`，只允许 main，开启本人审批、禁止管理员绕过。
+2. 添加变量 `CUSTOMER_DOMAIN=kinghh.cn`，以及该环境的四个 Secrets。
+3. 自动化（Actions）→ **新建客户邮箱（外部 DNS）**，分支 main，域名 kinghh.cn，先选 plan。
 4. 审阅只读结果，再选 prepare 创建该客户资源并生成解析清单。
 5. 客户在原 DNS 平台填写清单，不切换 NS；已有企业邮箱先安排迁移。
 6. 同一源代码提交上运行 finish，核对双公网 DNS 和服务商认证，发送激活通知。

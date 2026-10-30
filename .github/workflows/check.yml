@@ -1,4 +1,4 @@
-name: Check external DNS mail
+name: 检查与构建（不部署客户）
 on:
   push:
     branches: [main]
@@ -10,30 +10,39 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 下载本次源码
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - name: 准备 Node.js 运行环境
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - uses: pnpm/action-setup@v4
+      - name: 准备依赖安装工具
+        uses: pnpm/action-setup@v4
         with:
           version: 9.10.0
-      - run: pnpm --dir mail-worker install --frozen-lockfile
-      - run: node --experimental-vm-modules --test automation/test/external-*.test.mjs
+      - name: 安装程序依赖
+        run: pnpm --dir mail-worker install --frozen-lockfile
+      - name: 执行外部 DNS 邮件测试
+        run: node --experimental-vm-modules --test automation/test/external-*.test.mjs
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 下载本次源码
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
+      - name: 准备依赖安装工具
+        uses: pnpm/action-setup@v4
         with:
           version: 9.10.0
-      - uses: actions/setup-node@v4
+      - name: 准备 Node.js 运行环境
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: |
+      - name: 构建网页并检查 Worker 打包
+        run: |
           pnpm --dir mail-worker install --frozen-lockfile
           pnpm --dir mail-vue install --frozen-lockfile
           pnpm --dir mail-vue run build

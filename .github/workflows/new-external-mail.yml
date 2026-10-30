@@ -1,13 +1,13 @@
-name: New external DNS mail customer
+name: 新建客户邮箱（外部 DNS）
 on:
   workflow_dispatch:
     inputs:
       domain:
-        description: 'Customer mail domain only, e.g. example.com. No nameserver change.'
+        description: '邮箱后缀域名，例如 kinghh.cn；不要填写 https:// 或网页地址，不更换 NS。'
         required: true
         type: string
       operation:
-        description: 'prepare = isolated project and DNS list; finish = verify customer DNS and send activation.'
+        description: '选择阶段：plan=只读检查；prepare=创建独立项目并生成 DNS 清单；finish=验证 DNS 并发送激活通知。'
         type: choice
         options: [plan,prepare,finish]
         default: plan
@@ -18,22 +18,27 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
+    name: 核对输入与源码范围
     runs-on: ubuntu-latest
     outputs:
       domain: ${{ steps.input.outputs.domain }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 下载本次源码
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - name: 准备 Node.js 运行环境
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - id: input
+      - name: 校验当前客户输入
+        id: input
         env:
           MAIL_DOMAIN: ${{ inputs.domain }}
         run: |
           node --input-type=module -e "import {domainName,REPOSITORY} from './automation/external-provision.mjs'; import{appendFileSync}from'node:fs';if(process.env.GITHUB_REPOSITORY!==REPOSITORY||process.env.GITHUB_REF!=='refs/heads/main')throw Error('Use this independent repository main branch');appendFileSync(process.env.GITHUB_OUTPUT,'domain='+domainName(process.env.MAIL_DOMAIN)+'\n')"
   customer:
+    name: 部署当前客户邮箱
     needs: validate
     environment: external-${{ needs.validate.outputs.domain }}
     runs-on: ubuntu-latest
@@ -43,25 +48,28 @@ jobs:
       CUSTOMER_DOMAIN: ${{ vars.CUSTOMER_DOMAIN }}
       WRANGLER_SEND_METRICS: 'false'
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 下载本次源码
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - name: 准备 Node.js 运行环境
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Read-only conflict and ownership checks
+      - name: 只读检查冲突与资源归属
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_OWNER_EMAIL: ${{ secrets.MAIL_OWNER_EMAIL }}
         run: node --experimental-vm-modules automation/external-provision.mjs --plan
-      - uses: pnpm/action-setup@v4
+      - name: 准备依赖安装工具
+        uses: pnpm/action-setup@v4
         if: inputs.operation != 'plan'
         with:
           version: 9.10.0
-      - name: Install, test and build
+      - name: 安装依赖、测试与构建
         if: inputs.operation != 'plan'
         run: |
           pnpm --dir mail-worker install --frozen-lockfile
@@ -69,7 +77,7 @@ jobs:
           node --experimental-vm-modules --test automation/test/external-*.test.mjs
           pnpm --dir mail-vue run build
           node automation/external-check-bundle.mjs
-      - name: Create isolated resources and return DNS list
+      - name: 创建本客户独立资源并生成 DNS 清单
         if: inputs.operation == 'prepare'
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -77,7 +85,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_OWNER_EMAIL: ${{ secrets.MAIL_OWNER_EMAIL }}
         run: node --experimental-vm-modules automation/external-provision.mjs --prepare
-      - name: Verify DNS and request administrator activation
+      - name: 验证 DNS 并发送管理员激活通知
         if: inputs.operation == 'finish'
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

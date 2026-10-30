@@ -92,7 +92,7 @@ async function cli() {
     });
     console.log(JSON.stringify(result));
     if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,
-      `## External customer website hostname\n\nDomain: ${result.domain}\n\nWebsite: https://${result.hostname}\n\nStatus: ${result.status}\n\nOriginal signed callback preserved: ${result.callback}\n\nOnly the owned Worker and deployment audit are updated. Existing database, accounts, passwords, mail, encrypted secrets and mail DNS are preserved. Custom-hostname routing, certificate and external website DNS must be verified separately.\n`);
+      `## 邮箱网页登录域名配置结果\n\n邮箱域名：${result.domain}\n\n网页登录地址：https://${result.hostname}\n\n当前状态：${result.status==='read_only_website_plan' ? '只读检查完成' : '程序适配完成，等待 DNS 和 HTTPS 证书'}（${result.status}）\n\n本次运行源码 SHA：${process.env.GITHUB_SHA}\n\nWorker 程序：${result.worker}\n\n原签名收信回调保持为：${result.callback}\n\n本流程仅更新归属匹配的客户程序及部署记录；保留原数据库、账号、密码、邮件、加密密钥与邮件 DNS。还需单独完成 Cloudflare for SaaS 主机名、精确路由、证书、客户网站 DNS 和真实收发验收。\n`);
   } finally {await rm(configPath,{force:true});}
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) cli().catch(error=>{console.error(error.message);process.exitCode=1;});

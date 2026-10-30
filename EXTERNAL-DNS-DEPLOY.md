@@ -1,5 +1,7 @@
 # 客户保留 DNS 的部署教程
 
+**[先看中文图解教程（kinghh.cn 示例）](DEPLOY-GUIDE-ZH.md)**。示例域名已经上线，不要重复创建；新客户统一替换为实际域名。
+
 客户不交出域名账号、不改 NS。网站程序运行在你的一个 Cloudflare 账号；每个客户资源分开。
 
 ## 先核对旧邮箱
@@ -9,16 +11,16 @@
 
 ## 每客户一次配置
 
-在本仓库 Settings → Environments 创建 `external-客户邮箱域名`，例如 `external-kinghh.cn`。
-将部署分支限定 main，Required reviewers 选择你本人，并禁止管理员绕过审批。
+在本仓库 设置（Settings）→ 环境（Environments） 创建 `external-客户邮箱域名`，例如 `external-kinghh.cn`。
+将部署分支限定 main，指定审批者（Required reviewers） 选择你本人，并禁止管理员绕过审批。
 
-Variables：
+环境变量（Variables）：
 
 | 名称 | 填写内容 |
 |---|---|
 | CUSTOMER_DOMAIN | 客户邮箱域名，例如 kinghh.cn，不能填 mail.kinghh.cn，除非邮箱后缀就是 @mail.kinghh.cn |
 
-Secrets：
+环境密钥（Secrets）：
 
 | 名称 | 填写内容 |
 |---|---|
@@ -32,7 +34,7 @@ Secrets：
 
 ## 三个阶段
 
-1. 打开 Actions → New external DNS mail customer → Run workflow，分支 main、输入域名，operation 先选 **plan**。它只读核对归属、已有 MX、服务商域名冲突，不创建资源。
+1. 打开 自动化（Actions）→ 新建客户邮箱（外部 DNS） → 运行工作流（Run workflow），分支 main、输入域名，operation 先选 **plan**。它只读核对归属、已有 MX、服务商域名冲突，不创建资源。
 2. 结果无冲突后选择 **prepare**，本人审批。创建 `xm-` 前缀的独立 Worker、D1、KV，在 Resend 注册新域名和签名通知，返回系统登录地址与 DNS 清单。此时尚未完成邮箱开通。
 3. 将清单交客户填写：类型、完整名称、内容、MX 优先级以服务商实际返回值为准。部分 DNS 后台会自动补后缀，注意不要重复域名。已有 SPF/DMARC 需要核对，不重复添加或自动覆盖。原网站 A/AAAA/CNAME 保留。
 4. 等解析生效后，在**同一个代码提交**上选择 **finish**，本人再次审批。程序检查两个公网解析器及 Resend 验证状态，再发送激活通知。Resend 认证是异步的，流程最多等待约 20 分钟；超时后可重试 finish，复用已有资源。若必需的收发信记录均已认证，可选 Forge CNAME 尚待认证导致的 Partially Verified 不会阻挡激活。
@@ -63,13 +65,13 @@ JWT 已存在则不轮换；已激活管理员不重置密码。未激活 finish
 
 首版收信下载使用了 `redirect: 'error'`。Cloudflare Workers 只支持 `manual` 和 `follow`，因此会在发出请求前报错。修复版使用 `manual` 并拒绝非成功响应，仍然禁止自动跳转，也不会向邮件原文下载地址发送 API Key。
 
-已经上线的项目不会因为 main 更新而自动发版。如需修复，选择 Actions → **Repair existing external mail inbound**，输入已有客户域名及部署状态记录中的完整 40 位源码 SHA，经客户环境本人审批后运行。程序仅接受 `mail-worker/src/external/protocol.js` 这一处运行代码变动，并核对仓库、账号、客户、Worker、数据库、KV、加密密钥、通知接口与已激活数据库标识。该流程不创建资源、不执行初始化、不改密码、密钥、DNS 或服务商配置。上线后仍须进行真实收信与附件验收。
+已经上线的项目不会因为 main 更新而自动发版。如需修复，选择 自动化（Actions）→ **修复已有客户收信**，输入已有客户域名及部署状态记录中的完整 40 位源码 SHA，经客户环境本人审批后运行。程序仅接受 `mail-worker/src/external/protocol.js` 这一处运行代码变动，并核对仓库、账号、客户、Worker、数据库、KV、加密密钥、通知接口与已激活数据库标识。该流程不创建资源、不执行初始化、不改密码、密钥、DNS 或服务商配置。上线后仍须进行真实收信与附件验收。
 
 ## 增加 mail.客户域名 登录地址
 
 客户保留外部 DNS 时，自定义网页登录地址需要先通过 Cloudflare for SaaS 接入并验证 HTTPS 证书。普通 CNAME 到 workers.dev 不能代替这一步。使用你自己在 CF 托管的接入域名，并将路由限定到对应客户；不要用全站通配路由覆盖现有网站或邮箱。
 
-在 Actions 选择 **Add external mail website hostname**，输入已有邮箱域名、`mail.邮箱域名` 和部署状态记录中当前完整 40 位源码 SHA，再本人审批客户环境。该流程只增加该项目的网页域名支持，保留原 workers.dev 地址和 Resend 签名通知接口；收信通知仍只在原地址接收。数据库、邮件、账号、密码和加密密钥继续使用现有资源，不执行初始化。
+在 Actions 选择 **添加邮箱网页登录域名**，输入已有邮箱域名、`mail.邮箱域名` 和部署状态记录中当前完整 40 位源码 SHA，再本人审批客户环境。该流程只增加该项目的网页域名支持，保留原 workers.dev 地址和 Resend 签名通知接口；收信通知仍只在原地址接收。数据库、邮件、账号、密码和加密密钥继续使用现有资源，不执行初始化。
 
 完成 SaaS 接入后，在客户 DNS 平台按实际返回值添加 `mail` CNAME 及必要的验证记录。原 MX、SPF、DKIM、网站 A/AAAA/CNAME 和 NS 保留。运行摘要中的 `website_runtime_ready_dns_tls_pending` 只表示程序适配完成，还必须验收新域名的证书、登录、附件、真实收发信。
 

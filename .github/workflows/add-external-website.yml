@@ -1,17 +1,17 @@
-name: Add external mail website hostname
+name: 添加邮箱网页登录域名
 on:
   workflow_dispatch:
     inputs:
       domain:
-        description: 'Existing mail domain, e.g. kinghh.cn'
+        description: '已有邮箱域名，例如 kinghh.cn（不是 mail.kinghh.cn）。'
         required: true
         type: string
       website_hostname:
-        description: 'Exactly mail.customer-domain, e.g. mail.kinghh.cn'
+        description: '网页登录域名，只支持 mail.邮箱域名，例如 mail.kinghh.cn。'
         required: true
         type: string
       expected_deployed_commit:
-        description: 'Exact 40-character source SHA recorded for the existing customer'
+        description: '该客户当前已部署源码的完整 40 位 SHA；不是 CF 版本 UUID，也不要直接填最新 main。'
         required: true
         type: string
 permissions:
@@ -21,18 +21,22 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
+    name: 核对输入与源码范围
     runs-on: ubuntu-latest
     outputs:
       domain: ${{ steps.input.outputs.domain }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 下载本次源码
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - name: 准备 Node.js 运行环境
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - id: input
+      - name: 校验当前客户输入
+        id: input
         env:
           MAIL_DOMAIN: ${{ inputs.domain }}
           WEBSITE_HOSTNAME: ${{ inputs.website_hostname }}
@@ -40,6 +44,7 @@ jobs:
         run: |
           node --input-type=module -e "import{domainName,REPOSITORY}from'./automation/external-provision.mjs';import{websiteHostname,websiteSourceAllowed}from'./automation/external-website.mjs';import{appendFileSync}from'node:fs';if(process.env.GITHUB_REPOSITORY!==REPOSITORY||process.env.GITHUB_REF!=='refs/heads/main'||!websiteSourceAllowed(process.env.EXPECTED_DEPLOYED_COMMIT,process.env.GITHUB_SHA,process.cwd()))throw Error('Invalid repository or migration source');websiteHostname(process.env.MAIL_DOMAIN,process.env.WEBSITE_HOSTNAME);appendFileSync(process.env.GITHUB_OUTPUT,'domain='+domainName(process.env.MAIL_DOMAIN)+'\n')"
   website:
+    name: 配置当前客户网页地址
     needs: validate
     environment: external-${{ needs.validate.outputs.domain }}
     runs-on: ubuntu-latest
@@ -51,31 +56,34 @@ jobs:
       EXPECTED_DEPLOYED_COMMIT: ${{ inputs.expected_deployed_commit }}
       WRANGLER_SEND_METRICS: 'false'
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 下载本次源码
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - name: 准备 Node.js 运行环境
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Read-only existing customer checks
+      - name: 只读核对已有客户
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           MAIL_OWNER_EMAIL: ${{ secrets.MAIL_OWNER_EMAIL }}
         run: node automation/external-website.mjs --plan
-      - uses: pnpm/action-setup@v4
+      - name: 准备依赖安装工具
+        uses: pnpm/action-setup@v4
         with:
           version: 9.10.0
-      - name: Test and build hostname support
+      - name: 测试并构建网页登录域名支持
         run: |
           pnpm --dir mail-worker install --frozen-lockfile
           pnpm --dir mail-vue install --frozen-lockfile
           node --experimental-vm-modules --test automation/test/external-*.test.mjs
           pnpm --dir mail-vue run build
           node automation/external-check-bundle.mjs
-      - name: Add website hostname while preserving the original mail callback
+      - name: 配置网页登录域名并保留原收信回调
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

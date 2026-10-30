@@ -1,13 +1,13 @@
-name: Repair existing external mail inbound
+name: 修复已有客户收信
 on:
   workflow_dispatch:
     inputs:
       domain:
-        description: 'Existing customer domain only'
+        description: '仅填写已有客户的邮箱域名，例如 kinghh.cn。'
         required: true
         type: string
       expected_deployed_commit:
-        description: 'Exact 40-character source SHA recorded for the existing deployment'
+        description: '现有部署记录里的完整 40 位源码 SHA；仅修复已核对归属的客户。'
         required: true
         type: string
 permissions:
@@ -17,24 +17,29 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
+    name: 核对输入与源码范围
     runs-on: ubuntu-latest
     outputs:
       domain: ${{ steps.input.outputs.domain }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 下载本次源码
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - name: 准备 Node.js 运行环境
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - id: input
+      - name: 校验当前客户输入
+        id: input
         env:
           MAIL_DOMAIN: ${{ inputs.domain }}
           EXPECTED_DEPLOYED_COMMIT: ${{ inputs.expected_deployed_commit }}
         run: |
           node --input-type=module -e "import{domainName,REPOSITORY}from'./automation/external-provision.mjs';import{repairSourceAllowed}from'./automation/external-repair.mjs';import{appendFileSync}from'node:fs';if(process.env.GITHUB_REPOSITORY!==REPOSITORY||process.env.GITHUB_REF!=='refs/heads/main'||!repairSourceAllowed(process.env.EXPECTED_DEPLOYED_COMMIT,process.env.GITHUB_SHA,process.cwd()))throw Error('Invalid repository, source or repair scope');appendFileSync(process.env.GITHUB_OUTPUT,'domain='+domainName(process.env.MAIL_DOMAIN)+'\n')"
   repair:
+    name: 修复当前客户收信
     needs: validate
     environment: external-${{ needs.validate.outputs.domain }}
     runs-on: ubuntu-latest
@@ -45,24 +50,27 @@ jobs:
       EXPECTED_DEPLOYED_COMMIT: ${{ inputs.expected_deployed_commit }}
       WRANGLER_SEND_METRICS: 'false'
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 下载本次源码
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - name: 准备 Node.js 运行环境
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - uses: pnpm/action-setup@v4
+      - name: 准备依赖安装工具
+        uses: pnpm/action-setup@v4
         with:
           version: 9.10.0
-      - name: Test and build the fixed source
+      - name: 测试并构建修复版本
         run: |
           pnpm --dir mail-worker install --frozen-lockfile
           pnpm --dir mail-vue install --frozen-lockfile
           node --experimental-vm-modules --test automation/test/external-*.test.mjs
           pnpm --dir mail-vue run build
           node automation/external-check-bundle.mjs
-      - name: Repair only the owned existing Worker
+      - name: 仅修复归属匹配的客户程序
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
