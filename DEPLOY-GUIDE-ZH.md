@@ -2,7 +2,7 @@
 
 **客户保留 DNS / NS · 共用一个 Cloudflare 账号 · 每客户独立项目**
 
-本教程用 **kinghh.cn** 演示，邮箱管理员是 **admin@kinghh.cn**，正式网页登录地址是 **https://mail.kinghh.cn**。
+本教程用 **kinghh.cn** 演示，邮箱管理员是 **admin@kinghh.cn**，正式网页登录地址是 [mail.kinghh.cn](https://mail.kinghh.cn)。
 
 > **kinghh.cn 已经上线，仅用作教程示例，不要重复新建、重新初始化或清库。** 下一位客户请把示例域名统一替换为客户实际域名；不要复制本客户的密钥、激活码、DKIM 或证书验证值。
 
@@ -10,10 +10,10 @@
 
 ## 先理解“一键”自动到哪里
 
-- **自动完成：**只读检查、构建、独立 Worker 程序 / D1 数据库 / KV 存储、初始化新库、Resend 域名与收信通知接口、DNS 清单、验证和激活通知。
-- **仍需操作：**首次授权、本人审批、客户填写 DNS、设置管理员密码；正式的 `mail.客户域名` 还需完成自定义主机名、证书和精确路由。
-- **不需要：**客户转移域名账号、更换 NS 或覆盖原网站解析。
-- **收发信服务商：**本仓库使用 Resend；不要混用原仓库的 CF 原生收发配置。
+- **自动完成**：只读检查、构建、独立 Worker 程序 / D1 数据库 / KV 存储、初始化新库、Resend 域名与收信通知接口、DNS 清单、验证和激活通知。
+- **仍需操作**：首次授权、本人审批、客户填写 DNS、设置管理员密码；正式的 `mail.客户域名` 还需完成自定义主机名、证书和精确路由。
+- **不需要**：客户转移域名账号、更换 NS 或覆盖原网站解析。
+- **收发信服务商**：本仓库使用 Resend；不要混用原仓库的 CF 原生收发配置。
 
 ![部署流程总览](docs/images/zh/step-01.svg)
 
@@ -227,7 +227,7 @@ prepare 与后续 finish 期间，不要更新 main 的运行代码。旧客户�
 
 在接入域 `iwxh.cc` 完成：
 
-1. **Worker 路由（Workers Routes）**添加 `mail.kinghh.cn/*`。
+1. 打开 **Worker 路由**（Workers Routes），添加 `mail.kinghh.cn/*`。
 2. 选这个客户自己的 `xm-mail-...` Worker，保存；不要选旧项目，也不添加泛域或全站路由。
 3. **规则 → 重定向规则（Redirect Rules）**，仅匹配 `http://mail.kinghh.cn/*`。
 4. 目标 `https://mail.kinghh.cn/${1}`，状态码 **308**，开启 **保留查询参数（Preserve query string）**。
